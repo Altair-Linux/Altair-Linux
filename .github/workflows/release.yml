@@ -1,0 +1,75 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:edge
+      options: --privileged
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install host build dependencies
+        run: |
+          apk add --no-cache \
+            bash git squashfs-tools xorriso grub grub-efi \
+            grub-bios mtools dosfstools curl github-cli
+
+      - name: Set version from tag
+        run: |
+          if echo "${GITHUB_REF}" | grep -q '^refs/tags/v'; then
+            echo "DISTRO_VERSION=${GITHUB_REF#refs/tags/v}" >> "${GITHUB_ENV}"
+          else
+            echo "DISTRO_VERSION=0.1.0-dev" >> "${GITHUB_ENV}"
+          fi
+
+      - name: Build rootfs
+        run: bash scripts/build-rootfs.sh
+
+      - name: Install base system
+        run: bash scripts/install-base.sh
+
+      - name: Install kernel and initramfs
+        run: bash scripts/build-kernel.sh
+
+      - name: Install display stack
+        run: bash scripts/install-display-stack.sh
+
+      - name: Install KDE Plasma
+        run: bash scripts/install-kde.sh
+
+      - name: Apply Altair branding
+        run: bash scripts/apply-branding.sh
+
+      - name: Build ISO
+        run: bash scripts/make-iso.sh
+
+      - name: Upload ISO as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: altair-linux-${{ env.DISTRO_VERSION }}-x86_64
+          path: |
+            out/*.iso
+            out/*.sha256
+          retention-days: 14
+
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          GH_RELEASE_TAG: ${{ github.ref_name }}
+        run: bash scripts/release.sh
