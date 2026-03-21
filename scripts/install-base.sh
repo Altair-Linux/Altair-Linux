@@ -4,7 +4,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../config.sh"
 
-require_cmd curl
 require_cmd cargo
 
 section "Building Astra from source"
@@ -19,43 +18,21 @@ fi
 cargo build --release --manifest-path "${ASTRA_SRC}/Cargo.toml"
 ASTRA="${ASTRA_SRC}/target/release/astra"
 
-section "Fetching pre-built packages from Altair-Linux/packages CI"
+section "Cloning Altair packages repo"
 
-ensure_dir "${PACKAGES_OUT_DIR}"
-
-PACKAGES_API="https://api.github.com/repos/Altair-Linux/packages/actions/artifacts"
-ARTIFACTS_JSON="${PACKAGES_OUT_DIR}/artifacts.json"
-
-curl -fsSL \
-    -H "Accept: application/vnd.github+json" \
-    "${PACKAGES_API}?per_page=10&name=astra-packages" \
-    -o "${ARTIFACTS_JSON}"
-
-ARTIFACT_URL="$(grep -o '"archive_download_url":"[^"]*"' "${ARTIFACTS_JSON}" | head -1 | cut -d'"' -f4)"
-
-if [[ -z "${ARTIFACT_URL}" ]]; then
-    die "Could not find astra-packages artifact in Altair-Linux/packages. Ensure the packages CI has run successfully."
+if [[ ! -d "${PACKAGES_DIR}/.git" ]]; then
+    git clone --depth=1 "${PACKAGES_REPO_URL}" "${PACKAGES_DIR}"
+else
+    git -C "${PACKAGES_DIR}" pull --ff-only
 fi
 
-echo "Downloading packages artifact: ${ARTIFACT_URL}"
-
-curl -fsSL \
-    -H "Authorization: Bearer ${GITHUB_TOKEN:-}" \
-    -H "Accept: application/vnd.github+json" \
-    -L "${ARTIFACT_URL}" \
-    -o "${PACKAGES_OUT_DIR}/packages.zip"
-
-cd "${PACKAGES_OUT_DIR}"
-unzip -o packages.zip
-cd "${REPO_ROOT}"
-
-echo "Downloaded packages:"
-ls -1 "${PACKAGES_OUT_DIR}"/*.astpkg 2>/dev/null || die "No .astpkg files found after download"
+bash "${SCRIPTS_DIR}/patch-recipes.sh"
 
 section "Initialising Astra"
 
 ensure_dir "${ASTRA_DATA_DIR}"
 ensure_dir "${ASTRA_ROOT_DIR}"
+ensure_dir "${PACKAGES_OUT_DIR}"
 
 "${ASTRA}" init \
     --data-dir "${ASTRA_DATA_DIR}" \
@@ -65,24 +42,46 @@ ensure_dir "${ASTRA_ROOT_DIR}"
     --data-dir "${ASTRA_DATA_DIR}" \
     --root     "${ASTRA_ROOT_DIR}"
 
+section "Building bootstrap packages from source"
+
+for pkg in "${BOOTSTRAP_PACKAGES[@]}"; do
+    [[ "${pkg}" == "astra" ]] && continue
+    if [[ ! -d "${PACKAGES_DIR}/${pkg}" ]]; then
+        echo "WARNING: recipe not found for ${pkg}, skipping"
+        continue
+    fi
+    echo "--> Building ${pkg}"
+    set +e
+    "${ASTRA}" build "${PACKAGES_DIR}/${pkg}" \
+        --output   "${PACKAGES_OUT_DIR}" \
+        --data-dir "${ASTRA_DATA_DIR}" \
+        --root     "${ASTRA_ROOT_DIR}"
+    rc=$?
+    set -e
+    if [[ "${rc}" -ne 0 ]]; then
+        echo "ERROR: astra build failed for ${pkg} (exit ${rc})"
+        exit 1
+    fi
+done
+
+echo "Built packages:"
+ls -1 "${PACKAGES_OUT_DIR}/"
+
 section "Installing bootstrap packages into rootfs"
 
 installed=0
 for pkg in "${BOOTSTRAP_PACKAGES[@]}"; do
     [[ "${pkg}" == "astra" ]] && continue
-    astpkg="$(ls "${PACKAGES_OUT_DIR}/${pkg}"-*.astpkg 2>/dev/null | head -1)"
+    astpkg="$(ls "${PACKAGES_OUT_DIR}/${pkg}"-*.astpkg 2>/dev/null | head -1 || true)"
     if [[ -z "${astpkg}" ]]; then
         echo "WARNING: no .astpkg found for ${pkg}, skipping"
         continue
     fi
     echo "--> Installing $(basename "${astpkg}")"
-    if ! "${ASTRA}" install "${astpkg}" \
+    "${ASTRA}" install "${astpkg}" \
         --data-dir "${ASTRA_DATA_DIR}" \
-        --root     "${ROOTFS_DIR}" 2>&1; then
-        echo "WARNING: install failed for $(basename "${astpkg}")"
-    else
-        installed=$((installed + 1))
-    fi
+        --root     "${ROOTFS_DIR}"
+    installed=$((installed + 1))
 done
 
 echo "Installed ${installed} package(s) into rootfs"
