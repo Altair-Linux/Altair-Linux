@@ -4,60 +4,35 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../config.sh"
 
-require_cmd python3
-
-section "Patching Astrafile.yaml files in ${PACKAGES_DIR}"
-
-python3 << 'PYEOF'
-import os, sys
-
-packages_dir = os.environ["PACKAGES_DIR"]
-patched = 0
-
-for root, dirs, files in os.walk(packages_dir):
-    for fname in files:
-        if fname != "Astrafile.yaml":
+find "${PACKAGES_DIR}" -name "Astrafile.yaml" | while IFS= read -r recipe; do
+    in_deps=0
+    out=""
+    while IFS= read -r line; do
+        if echo "${line}" | grep -qE '^dependencies:'; then
+            in_deps=1
+            out="${out}${line}
+"
             continue
-        path = os.path.join(root, fname)
-        with open(path, "r") as f:
-            lines = f.readlines()
-
-        new_lines = []
-        in_deps = False
-        changed = False
-
-        for line in lines:
-            stripped = line.rstrip("\n")
-
-            if stripped.startswith("dependencies:"):
-                in_deps = True
-                new_lines.append(line)
+        fi
+        if [ "${in_deps}" = "1" ]; then
+            if echo "${line}" | grep -qE '^  - '; then
+                if echo "${line}" | grep -qE 'name:'; then
+                    out="${out}${line}
+"
+                else
+                    value="$(echo "${line}" | sed -E "s/^  - ['\"]?([^'\"]+)['\"]?$/\1/" | tr -d ' ')"
+                    out="${out}  - name: ${value}
+"
+                fi
                 continue
+            elif ! echo "${line}" | grep -qE '^[ ]'; then
+                in_deps=0
+            fi
+        fi
+        out="${out}${line}
+"
+    done < "${recipe}"
+    printf '%s' "${out}" > "${recipe}"
+done
 
-            if in_deps:
-                if stripped.startswith("  -"):
-                    # check if already structured
-                    after_dash = stripped[3:].strip()
-                    if after_dash.startswith("name:") or after_dash == "[]" or after_dash == "":
-                        new_lines.append(line)
-                    else:
-                        # plain string — rewrite
-                        indent = len(stripped) - len(stripped.lstrip())
-                        value = after_dash.strip('"').strip("'").strip()
-                        new_line = " " * indent + "- name: " + value + "\n"
-                        print(f"  PATCH {path}: '{stripped}' -> '{new_line.rstrip()}'")
-                        new_lines.append(new_line)
-                        changed = True
-                    continue
-                elif not stripped.startswith(" ") and stripped != "":
-                    in_deps = False
-
-            new_lines.append(line)
-
-        if changed:
-            with open(path, "w") as f:
-                f.writelines(new_lines)
-            patched += 1
-
-print(f"Patched {patched} recipe file(s).")
-PYEOF
+echo "Recipe normalisation complete"
