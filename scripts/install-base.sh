@@ -50,22 +50,26 @@ for pkg in "${BOOTSTRAP_PACKAGES[@]}"; do
         echo "WARNING: recipe not found for ${pkg}, skipping"
         continue
     fi
+
     echo "--> Building ${pkg}"
-    set +e
     "${ASTRA}" build "${PACKAGES_DIR}/${pkg}" \
         --output   "${PACKAGES_OUT_DIR}" \
         --data-dir "${ASTRA_DATA_DIR}" \
-        --root     "${ASTRA_ROOT_DIR}"
-    rc=$?
-    set -e
-    if [[ "${rc}" -ne 0 ]]; then
-        echo "ERROR: astra build failed for ${pkg} (exit ${rc})"
+        --root     "${ASTRA_ROOT_DIR}" \
+        || { echo "ERROR: astra build failed for ${pkg}"; exit 1; }
+
+    echo "    Output dir contents after ${pkg}:"
+    ls -1 "${PACKAGES_OUT_DIR}/" || true
+
+    astpkg="$(ls "${PACKAGES_OUT_DIR}/${pkg}"-*.astpkg 2>/dev/null | head -1 || true)"
+    if [[ -z "${astpkg}" ]]; then
+        echo "ERROR: astra build exited 0 for ${pkg} but no .astpkg was produced."
+        echo "Full output dir:"
+        find "${PACKAGES_OUT_DIR}" -type f || true
         exit 1
     fi
+    echo "    Produced: $(basename "${astpkg}")"
 done
-
-echo "Built packages:"
-ls -1 "${PACKAGES_OUT_DIR}/"
 
 section "Installing bootstrap packages into rootfs"
 
