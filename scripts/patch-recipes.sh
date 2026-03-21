@@ -28,15 +28,22 @@ find "${PACKAGES_DIR}" -name "Astrafile.yaml" | while IFS= read -r recipe; do
                 $_ = $block;
             }
         }
-        # Normalise x.y version to x.y.0
-        if (/^version:\s*"?(\d+\.\d+)"?\s*$/) {
+        if (/^version:\s*"?([^"\n]+)"?\s*$/) {
             my $v = $1;
-            $_ =~ s/"?\Q$v\E"?/"$v.0"/;
-        }
-        # Normalise YYYYMMDD date version to YYYY.M.D (no leading zeros)
-        if (/^version:\s*"?(\d{4})(\d{2})(\d{2})"?\s*$/) {
-            my ($y, $m, $d) = ($1, int($2), int($3));
-            $_ = "version: \"$y.$m.$d\"\n";
+            my $orig = $v;
+            # Strip non-numeric suffixes: p1, b2, rc3, alpha1 etc.
+            $v =~ s/[a-zA-Z]+\d*$//;
+            # Strip trailing dots or dashes left behind
+            $v =~ s/[-.]$//;
+            # Normalise YYYYMMDD to YYYY.M.D
+            if ($v =~ /^(\d{4})(\d{2})(\d{2})$/) {
+                $v = "$1." . int($2) . "." . int($3);
+            }
+            # Normalise x.y to x.y.0
+            elsif ($v =~ /^\d+\.\d+$/) {
+                $v = "$v.0";
+            }
+            $_ = "version: \"$v\"\n" if $v ne $orig;
         }
     ' "${recipe}"
 done
