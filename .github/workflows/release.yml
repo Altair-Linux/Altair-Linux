@@ -26,8 +26,8 @@ jobs:
         run: |
           apk add --no-cache \
             bash git squashfs-tools xorriso grub grub-bios \
-            mtools dosfstools curl github-cli \
-            rust cargo perl gawk \
+            mtools dosfstools curl github-cli unzip \
+            rust cargo perl \
             build-base make \
             pkgconf musl-dev openssl-dev openssl-libs-static
 
@@ -43,6 +43,8 @@ jobs:
         run: bash scripts/build-rootfs.sh
 
       - name: Install base system
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/install-base.sh
 
       - name: Install kernel and initramfs
