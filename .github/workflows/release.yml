@@ -26,10 +26,12 @@ jobs:
         run: |
           apk add --no-cache \
             bash git squashfs-tools xorriso grub grub-bios \
-            mtools dosfstools curl github-cli unzip \
+            mtools dosfstools curl wget github-cli unzip \
             rust cargo perl \
-            build-base make \
-            pkgconf musl-dev openssl-dev openssl-libs-static
+            build-base make cmake autoconf automake libtool \
+            pkgconf musl-dev openssl-dev openssl-libs-static \
+            linux-headers bison flex texinfo \
+            zlib-dev xz-dev bzip2-dev
 
       - name: Set version from tag
         run: |
@@ -43,8 +45,6 @@ jobs:
         run: bash scripts/build-rootfs.sh
 
       - name: Install base system
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/install-base.sh
 
       - name: Install kernel and initramfs
