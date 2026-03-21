@@ -1,40 +1,81 @@
-#!/usr/bin/env bash
-set -euo pipefail
+name: Build and Release
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/../config.sh"
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
 
-section "Uploading release to GitHub"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:edge
+      options: --privileged
 
-require_cmd gh
+    permissions:
+      contents: write
 
-if [[ ! -f "${ISO_FILENAME}" ]]; then
-    die "ISO not found: ${ISO_FILENAME}. Run the iso phase first."
-fi
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-ISO_SHA256="$(sha256sum "${ISO_FILENAME}" | awk '{print $1}')"
-CHECKSUM_FILE="${OUT_DIR}/altair-linux-${DISTRO_VERSION}-${DISTRO_ARCH}.sha256"
-echo "${ISO_SHA256}  $(basename "${ISO_FILENAME}")" > "${CHECKSUM_FILE}"
+      - name: Install host build dependencies
+        run: |
+          apk add --no-cache \
+            bash git squashfs-tools xorriso grub grub-bios \
+            mtools dosfstools curl github-cli \
+            rust cargo perl gawk \
+            build-base make \
+            pkgconf musl-dev openssl-dev openssl-libs-static
 
-RELEASE_NOTES="Altair Linux ${DISTRO_VERSION} (${DISTRO_CODENAME})
+      - name: Set version from tag
+        run: |
+          if echo "${GITHUB_REF}" | grep -q '^refs/tags/v'; then
+            echo "DISTRO_VERSION=${GITHUB_REF#refs/tags/v}" >> "${GITHUB_ENV}"
+          else
+            echo "DISTRO_VERSION=0.1.0-dev" >> "${GITHUB_ENV}"
+          fi
 
-SHA256: ${ISO_SHA256}"
+      - name: Build rootfs
+        run: bash scripts/build-rootfs.sh
 
-if gh release view "${GH_RELEASE_TAG}" --repo "${GH_REPO}" >/dev/null 2>&1; then
-    section "Release ${GH_RELEASE_TAG} already exists — uploading assets"
-    gh release upload "${GH_RELEASE_TAG}" \
-        "${ISO_FILENAME}" \
-        "${CHECKSUM_FILE}" \
-        --repo "${GH_REPO}" \
-        --clobber
-else
-    section "Creating release ${GH_RELEASE_TAG}"
-    gh release create "${GH_RELEASE_TAG}" \
-        "${ISO_FILENAME}" \
-        "${CHECKSUM_FILE}" \
-        --repo "${GH_REPO}" \
-        --title "${DISTRO_NAME} ${DISTRO_VERSION}" \
-        --notes "${RELEASE_NOTES}"
-fi
+      - name: Install base system
+        run: bash scripts/install-base.sh
 
-section "Release complete: ${GH_RELEASE_TAG}"
+      - name: Install kernel and initramfs
+        run: bash scripts/build-kernel.sh
+
+      - name: Install display stack
+        run: bash scripts/install-display-stack.sh
+
+      - name: Install KDE Plasma
+        run: bash scripts/install-kde.sh
+
+      - name: Apply Altair branding
+        run: bash scripts/apply-branding.sh
+
+      - name: Configure boot
+        run: bash scripts/setup-boot.sh
+
+      - name: Build ISO
+        run: bash scripts/make-iso.sh
+
+      - name: Upload ISO as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: altair-linux-${{ env.DISTRO_VERSION }}-x86_64
+          path: |
+            out/*.iso
+            out/*.sha256
+          retention-days: 14
+
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          GH_RELEASE_TAG: ${{ github.ref_name }}
+        run: bash scripts/release.sh
