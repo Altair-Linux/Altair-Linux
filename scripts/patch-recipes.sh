@@ -31,17 +31,21 @@ find "${PACKAGES_DIR}" -name "Astrafile.yaml" | while IFS= read -r recipe; do
         if (/^version:\s*"?([^"\n]+)"?\s*$/) {
             my $v = $1;
             my $orig = $v;
-            # Strip non-numeric suffixes: p1, b2, rc3, alpha1 etc.
-            $v =~ s/[a-zA-Z]+\d*$//;
-            # Strip trailing dots or dashes left behind
-            $v =~ s/[-.]$//;
-            # Normalise YYYYMMDD to YYYY.M.D
-            if ($v =~ /^(\d{4})(\d{2})(\d{2})$/) {
-                $v = "$1." . int($2) . "." . int($3);
-            }
-            # Normalise x.y to x.y.0
-            elsif ($v =~ /^\d+\.\d+$/) {
-                $v = "$v.0";
+            # Non-numeric start (e.g. rolling-abc123) -> 0.0.0
+            if ($v =~ /^[a-zA-Z]/) {
+                $v = "0.0.0";
+            } else {
+                # Strip non-numeric suffixes: p1, b2, rc3 etc.
+                $v =~ s/[a-zA-Z]+\d*$//;
+                $v =~ s/[-.]$//;
+                # Normalise YYYYMMDD to YYYY.M.D
+                if ($v =~ /^(\d{4})(\d{2})(\d{2})$/) {
+                    $v = "$1." . int($2) . "." . int($3);
+                }
+                # Normalise x.y to x.y.0
+                elsif ($v =~ /^\d+\.\d+$/) {
+                    $v = "$v.0";
+                }
             }
             $_ = "version: \"$v\"\n" if $v ne $orig;
         }
