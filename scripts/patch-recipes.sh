@@ -33,9 +33,9 @@ find "${PACKAGES_DIR}" -name "Astrafile.yaml" | while IFS= read -r recipe; do
             my $v = $1;
             $_ =~ s/"?\Q$v\E"?/"$v.0"/;
         }
-        # Normalise YYYYMMDD date version to YYYY.MM.DD
+        # Normalise YYYYMMDD date version to YYYY.M.D (no leading zeros)
         if (/^version:\s*"?(\d{4})(\d{2})(\d{2})"?\s*$/) {
-            my ($y, $m, $d) = ($1, $2, $3);
+            my ($y, $m, $d) = ($1, int($2), int($3));
             $_ = "version: \"$y.$m.$d\"\n";
         }
     ' "${recipe}"
