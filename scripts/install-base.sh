@@ -4,9 +4,24 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../config.sh"
 
-section "Installing base system"
+section "Configuring Alpine repositories"
 
-require_cmd apk
+mkdir -p "${ROOTFS_DIR}/etc/apk"
+
+cat > "${ROOTFS_DIR}/etc/apk/repositories" << EOF
+https://dl-cdn.alpinelinux.org/alpine/v3.19/main
+https://dl-cdn.alpinelinux.org/alpine/v3.19/community
+EOF
+
+section "Trusting Alpine keys"
+
+apk add --no-cache alpine-keys
+apk update
+
+mkdir -p "${ROOTFS_DIR}/etc/apk/keys"
+cp /etc/apk/keys/* "${ROOTFS_DIR}/etc/apk/keys/"
+
+section "Installing base system"
 
 BASE_PACKAGES=(
     alpine-base
@@ -22,6 +37,7 @@ BASE_PACKAGES=(
     pkgconf
     coreutils
     util-linux
+    util-linux-misc
     bash
     tar
     gzip
@@ -49,8 +65,8 @@ apk add \
     --initdb \
     --no-cache \
     --arch "${DISTRO_ARCH}" \
-    --repository "${ALTAIR_REPO_URL}/main" \
-    --repository "${ALTAIR_REPO_URL}/community" \
+    --keys-dir "${ROOTFS_DIR}/etc/apk/keys" \
+    --repositories-file "${ROOTFS_DIR}/etc/apk/repositories" \
     "${BASE_PACKAGES[@]}"
 
 echo "root:x:0:0:root:/root:/bin/bash" >> "${ROOTFS_DIR}/etc/passwd"
