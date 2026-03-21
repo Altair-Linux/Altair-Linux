@@ -45,6 +45,9 @@ ensure_dir "${PACKAGES_OUT_DIR}"
 section "Building bootstrap packages"
 
 for pkg in "${BOOTSTRAP_PACKAGES[@]}"; do
+    if [[ "${pkg}" == "astra" ]]; then
+        continue
+    fi
     if [[ -d "${PACKAGES_DIR}/${pkg}" ]]; then
         "${ASTRA}" build "${PACKAGES_DIR}/${pkg}" \
             --output   "${PACKAGES_OUT_DIR}" \
@@ -63,6 +66,10 @@ for astpkg in "${PACKAGES_OUT_DIR}"/*.astpkg; do
         --data-dir "${ASTRA_DATA_DIR}" \
         --root     "${ROOTFS_DIR}"
 done
+
+section "Installing Astra binary directly into rootfs"
+
+install -Dm755 "${ASTRA}" "${ROOTFS_DIR}/usr/bin/astra"
 
 section "Writing base system config"
 
