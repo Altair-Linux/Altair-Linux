@@ -25,8 +25,9 @@ jobs:
       - name: Install host build dependencies
         run: |
           apk add --no-cache \
-            bash git squashfs-tools xorriso grub grub-efi \
-            grub-bios mtools dosfstools curl github-cli
+            bash git squashfs-tools xorriso grub grub-bios \
+            mtools dosfstools curl github-cli \
+            rust cargo
 
       - name: Set version from tag
         run: |
@@ -53,6 +54,9 @@ jobs:
 
       - name: Apply Altair branding
         run: bash scripts/apply-branding.sh
+
+      - name: Configure boot
+        run: bash scripts/setup-boot.sh
 
       - name: Build ISO
         run: bash scripts/make-iso.sh
