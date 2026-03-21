@@ -28,10 +28,15 @@ find "${PACKAGES_DIR}" -name "Astrafile.yaml" | while IFS= read -r recipe; do
                 $_ = $block;
             }
         }
-        # Normalise version strings to full semver x.y.z
+        # Normalise x.y version to x.y.0
         if (/^version:\s*"?(\d+\.\d+)"?\s*$/) {
             my $v = $1;
             $_ =~ s/"?\Q$v\E"?/"$v.0"/;
+        }
+        # Normalise YYYYMMDD date version to YYYY.MM.DD
+        if (/^version:\s*"?(\d{4})(\d{2})(\d{2})"?\s*$/) {
+            my ($y, $m, $d) = ($1, $2, $3);
+            $_ = "version: \"$y.$m.$d\"\n";
         }
     ' "${recipe}"
 done
