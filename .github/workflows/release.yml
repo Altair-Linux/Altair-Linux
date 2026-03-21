@@ -27,7 +27,7 @@ jobs:
           apk add --no-cache \
             bash git squashfs-tools xorriso grub grub-bios \
             mtools dosfstools curl github-cli \
-            rust cargo perl \
+            rust cargo perl gawk \
             build-base make \
             pkgconf musl-dev openssl-dev openssl-libs-static
 
