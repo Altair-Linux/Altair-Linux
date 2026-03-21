@@ -14,9 +14,29 @@ fi
 
 section "Normalising Astrafile.yaml dependency entries"
 
-find "${PACKAGES_DIR}" -name "Astrafile.yaml" | while read -r recipe; do
-    sed -i -E 's/^(\s*)-\s+"?([a-zA-Z0-9_><=.+-]+)"?\s*$/\1- name: \2/' "${recipe}"
-done
+while IFS= read -r -d '' recipe; do
+    awk '
+    /^dependencies:/ { in_deps=1; print; next }
+    in_deps && /^[^ \t]/ && !/^  -/ { in_deps=0 }
+    in_deps && /^  - / {
+        line = $0
+        # already structured — has "name:" somewhere after the dash
+        if (line ~ /name:/) { print line; next }
+        # plain string — extract value and rewrite
+        match(line, /^(  - )"?([^"]+)"?[ \t]*$/, a)
+        if (a[2] != "") {
+            printf "  - name: %s\n", a[2]
+        } else {
+            print line
+        }
+        next
+    }
+    { print }
+    ' "${recipe}" > "${recipe}.tmp" && mv "${recipe}.tmp" "${recipe}"
+done < <(find "${PACKAGES_DIR}" -name "Astrafile.yaml" -print0)
+
+echo "Patched recipes:"
+grep -r "^  - name:" "${PACKAGES_DIR}" || true
 
 section "Building Astra from source"
 
