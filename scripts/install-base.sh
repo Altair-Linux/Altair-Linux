@@ -4,73 +4,65 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../config.sh"
 
-section "Configuring Alpine repositories"
+section "Cloning Altair packages repo"
 
-mkdir -p "${ROOTFS_DIR}/etc/apk"
+if [[ ! -d "${PACKAGES_DIR}/.git" ]]; then
+    git clone --depth=1 "${PACKAGES_REPO_URL}" "${PACKAGES_DIR}"
+else
+    git -C "${PACKAGES_DIR}" pull --ff-only
+fi
 
-cat > "${ROOTFS_DIR}/etc/apk/repositories" << EOF
-https://dl-cdn.alpinelinux.org/alpine/v3.19/main
-https://dl-cdn.alpinelinux.org/alpine/v3.19/community
-EOF
+section "Building Astra from source"
 
-section "Trusting Alpine keys"
+require_cmd cargo
 
-apk add --no-cache alpine-keys
-apk update
+ASTRA_SRC="${REPO_ROOT}/.astra-src"
+if [[ ! -d "${ASTRA_SRC}/.git" ]]; then
+    git clone --depth=1 "${ASTRA_REPO_URL}" "${ASTRA_SRC}"
+else
+    git -C "${ASTRA_SRC}" pull --ff-only
+fi
 
-mkdir -p "${ROOTFS_DIR}/etc/apk/keys"
-cp /etc/apk/keys/* "${ROOTFS_DIR}/etc/apk/keys/"
+cargo build --release --manifest-path "${ASTRA_SRC}/Cargo.toml"
+ASTRA="${ASTRA_SRC}/target/release/astra"
 
-section "Installing base system"
+section "Initialising Astra"
 
-BASE_PACKAGES=(
-    alpine-base
-    musl
-    musl-utils
-    busybox
-    busybox-suid
-    openrc
-    linux-headers
-    binutils
-    gcc
-    make
-    pkgconf
-    coreutils
-    util-linux
-    util-linux-misc
-    bash
-    tar
-    gzip
-    xz
-    bzip2
-    grep
-    sed
-    gawk
-    findutils
-    curl
-    ca-certificates
-    openssl
-    iproute2
-    dhclient
-    iptables
-    nano
-    shadow
-    sudo
-    dbus
-    eudev
-)
+ensure_dir "${ASTRA_DATA_DIR}"
+ensure_dir "${ASTRA_ROOT_DIR}"
+ensure_dir "${PACKAGES_OUT_DIR}"
 
-apk add \
-    --root "${ROOTFS_DIR}" \
-    --initdb \
-    --no-cache \
-    --arch "${DISTRO_ARCH}" \
-    --keys-dir "${ROOTFS_DIR}/etc/apk/keys" \
-    --repositories-file "${ROOTFS_DIR}/etc/apk/repositories" \
-    "${BASE_PACKAGES[@]}"
+"${ASTRA}" init \
+    --data-dir "${ASTRA_DATA_DIR}" \
+    --root     "${ASTRA_ROOT_DIR}"
 
-echo "root:x:0:0:root:/root:/bin/bash" >> "${ROOTFS_DIR}/etc/passwd"
-echo "root:!:19000:0:99999:7:::" >> "${ROOTFS_DIR}/etc/shadow"
+"${ASTRA}" key generate \
+    --data-dir "${ASTRA_DATA_DIR}" \
+    --root     "${ASTRA_ROOT_DIR}"
+
+section "Building bootstrap packages"
+
+for pkg in "${BOOTSTRAP_PACKAGES[@]}"; do
+    if [[ -d "${PACKAGES_DIR}/${pkg}" ]]; then
+        "${ASTRA}" build "${PACKAGES_DIR}/${pkg}" \
+            --output   "${PACKAGES_OUT_DIR}" \
+            --data-dir "${ASTRA_DATA_DIR}" \
+            --root     "${ASTRA_ROOT_DIR}"
+    else
+        echo "WARNING: package recipe not found for ${pkg}, skipping"
+    fi
+done
+
+section "Installing bootstrap packages into rootfs"
+
+for astpkg in "${PACKAGES_OUT_DIR}"/*.astpkg; do
+    [[ -f "${astpkg}" ]] || continue
+    "${ASTRA}" install "${astpkg}" \
+        --data-dir "${ASTRA_DATA_DIR}" \
+        --root     "${ROOTFS_DIR}"
+done
+
+section "Writing base system config"
 
 mkdir -p "${ROOTFS_DIR}/etc/sudoers.d"
 echo "%wheel ALL=(ALL) ALL" > "${ROOTFS_DIR}/etc/sudoers.d/wheel"
