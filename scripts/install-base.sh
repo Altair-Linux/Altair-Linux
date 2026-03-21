@@ -12,6 +12,53 @@ else
     git -C "${PACKAGES_DIR}" pull --ff-only
 fi
 
+section "Patching Astrafile.yaml dependency format"
+
+find "${PACKAGES_DIR}" -name "Astrafile.yaml" | while read -r recipe; do
+    python3 - "${recipe}" << 'PYEOF'
+import sys, re
+
+path = sys.argv[1]
+with open(path, "r") as f:
+    content = f.read()
+
+def fix_deps(block):
+    lines = block.split("\n")
+    out = []
+    for line in lines:
+        m = re.match(r'^(\s*)-\s+"?([^"{\n]+)"?\s*$', line)
+        if m and not m.group(2).strip().startswith("name:"):
+            out.append(f'{m.group(1)}- name: {m.group(2).strip()}')
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+in_deps = False
+result_lines = []
+dep_block = []
+
+for line in content.split("\n"):
+    if re.match(r'^dependencies\s*:', line):
+        in_deps = True
+        result_lines.append(line)
+        continue
+    if in_deps:
+        if re.match(r'^\s+-', line):
+            m = re.match(r'^(\s*)-\s+"?([^"{\n]+)"?\s*$', line)
+            if m and not m.group(2).strip().startswith("name:"):
+                result_lines.append(f'{m.group(1)}- name: {m.group(2).strip()}')
+            else:
+                result_lines.append(line)
+            continue
+        else:
+            in_deps = False
+    result_lines.append(line)
+
+with open(path, "w") as f:
+    f.write("\n".join(result_lines))
+PYEOF
+done
+
 section "Building Astra from source"
 
 require_cmd cargo
