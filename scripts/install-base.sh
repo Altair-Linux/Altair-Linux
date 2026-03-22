@@ -50,41 +50,37 @@ for pkg in "${BOOTSTRAP_PACKAGES[@]}"; do
         echo "WARNING: recipe not found for ${pkg}, skipping"
         continue
     fi
-
     echo "--> Building ${pkg}"
+    set -x
     "${ASTRA}" build "${PACKAGES_DIR}/${pkg}" \
         --output   "${PACKAGES_OUT_DIR}" \
         --data-dir "${ASTRA_DATA_DIR}" \
         --root     "${ASTRA_ROOT_DIR}" \
-        || { echo "ERROR: astra build failed for ${pkg}"; exit 1; }
-
-    echo "    Output dir contents after ${pkg}:"
-    ls -1 "${PACKAGES_OUT_DIR}/" || true
-
-    astpkg="$(ls "${PACKAGES_OUT_DIR}/${pkg}"-*.astpkg 2>/dev/null | head -1 || true)"
-    if [[ -z "${astpkg}" ]]; then
-        echo "ERROR: astra build exited 0 for ${pkg} but no .astpkg was produced."
-        echo "Full output dir:"
-        find "${PACKAGES_OUT_DIR}" -type f || true
-        exit 1
-    fi
-    echo "    Produced: $(basename "${astpkg}")"
+        || { set +x; echo "ERROR: astra build failed for ${pkg}"; exit 1; }
+    set +x
+    echo "    Output dir after ${pkg}:"
+    find "${PACKAGES_OUT_DIR}" -name "*.astpkg" | sort || true
 done
 
 section "Installing bootstrap packages into rootfs"
 
+echo "All packages available for install:"
+find "${PACKAGES_OUT_DIR}" -name "*.astpkg" | sort
+
 installed=0
 for pkg in "${BOOTSTRAP_PACKAGES[@]}"; do
     [[ "${pkg}" == "astra" ]] && continue
-    astpkg="$(ls "${PACKAGES_OUT_DIR}/${pkg}"-*.astpkg 2>/dev/null | head -1 || true)"
+    astpkg="$(find "${PACKAGES_OUT_DIR}" -name "${pkg}-*.astpkg" 2>/dev/null | head -1 || true)"
     if [[ -z "${astpkg}" ]]; then
         echo "WARNING: no .astpkg found for ${pkg}, skipping"
         continue
     fi
     echo "--> Installing $(basename "${astpkg}")"
+    set -x
     "${ASTRA}" install "${astpkg}" \
         --data-dir "${ASTRA_DATA_DIR}" \
         --root     "${ROOTFS_DIR}"
+    set +x
     installed=$((installed + 1))
 done
 
