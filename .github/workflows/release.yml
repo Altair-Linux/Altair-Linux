@@ -31,7 +31,7 @@ jobs:
             build-base make cmake autoconf automake libtool \
             pkgconf musl-dev openssl-dev openssl-libs-static \
             linux-headers bison flex texinfo \
-            zlib-dev xz-dev bzip2-dev
+            zlib-dev xz-dev bzip2-dev dracut bc elfutils-dev
 
       - name: Set version from tag
         run: |
