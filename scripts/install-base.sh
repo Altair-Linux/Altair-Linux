@@ -45,6 +45,17 @@ ensure_dir "${REPO_DIR}/signatures"
     --data-dir "${ASTRA_DATA_DIR}" \
     --root     "${ASTRA_ROOT_DIR}"
 
+section "Trusting the build signing key"
+
+"${ASTRA}" key export \
+    --data-dir "${ASTRA_DATA_DIR}" \
+    --root     "${ASTRA_ROOT_DIR}" \
+    > "${ASTRA_DATA_DIR}/build.pub"
+
+"${ASTRA}" key import altair-build "${ASTRA_DATA_DIR}/build.pub" \
+    --data-dir "${ASTRA_DATA_DIR}" \
+    --root     "${ASTRA_ROOT_DIR}"
+
 section "Building bootstrap packages"
 
 for pkg in "${BOOTSTRAP_PACKAGES[@]}"; do
@@ -67,8 +78,8 @@ cp "${PACKAGES_OUT_DIR}"/*.astpkg "${REPO_DIR}/packages/"
 
 section "Generating index.json"
 
-python3 - "${REPO_DIR}" "${ASTRA_DATA_DIR}" << 'PYEOF'
-import json, os, sys, hashlib, subprocess, datetime, tarfile, io
+python3 - "${REPO_DIR}" << 'PYEOF'
+import json, os, sys, hashlib, datetime, tarfile, io
 
 repo_dir   = sys.argv[1]
 pkgs_dir   = os.path.join(repo_dir, "packages")
@@ -80,29 +91,24 @@ for fname in sorted(os.listdir(pkgs_dir)):
         continue
     fpath = os.path.join(pkgs_dir, fname)
     size  = os.path.getsize(fpath)
-
     with open(fpath, "rb") as f:
         raw = f.read()
     checksum = hashlib.sha256(raw).hexdigest()
-
-    # Extract metadata.json from the zstd-compressed tar
     meta = {}
     try:
         import zstandard as zstd
-        dctx  = zstd.ZstdDecompressor()
-        data  = dctx.decompress(raw, max_output_size=50*1024*1024)
+        dctx = zstd.ZstdDecompressor()
+        data = dctx.decompress(raw, max_output_size=50*1024*1024)
         with tarfile.open(fileobj=io.BytesIO(data)) as tf:
             m = tf.extractfile("metadata.json")
             if m:
                 meta = json.load(m)
     except Exception:
-        # fallback: parse name/version/arch from filename
         parts = fname.replace(".astpkg","").rsplit("-", 2)
-        meta  = {"name": parts[0], "version": parts[1] if len(parts)>1 else "0.0.0",
-                 "architecture": parts[2] if len(parts)>2 else "x86_64",
-                 "description": "", "dependencies": [], "conflicts": [],
-                 "provides": [], "license": "", "maintainer": ""}
-
+        meta = {"name": parts[0], "version": parts[1] if len(parts)>1 else "0.0.0",
+                "architecture": parts[2] if len(parts)>2 else "x86_64",
+                "description": "", "dependencies": [], "conflicts": [],
+                "provides": [], "license": "", "maintainer": ""}
     entries.append({
         "name":         meta.get("name", fname),
         "version":      meta.get("version", "0.0.0"),
@@ -121,7 +127,7 @@ for fname in sorted(os.listdir(pkgs_dir)):
 index = {
     "name":         "altair",
     "description":  "Altair Linux local bootstrap repository",
-    "last_updated": datetime.datetime.utcnow().isoformat() + "Z",
+    "last_updated": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     "packages":     entries,
 }
 with open(index_path, "w") as f:
@@ -131,8 +137,7 @@ PYEOF
 
 section "Starting local repo server"
 
-"${ASTRA}" serve-repo "${REPO_DIR}" \
-    --bind 127.0.0.1:18080 &
+"${ASTRA}" serve-repo "${REPO_DIR}" --bind 127.0.0.1:18080 &
 REPO_PID=$!
 trap "kill ${REPO_PID} 2>/dev/null || true" EXIT
 sleep 2
