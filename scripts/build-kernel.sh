@@ -80,9 +80,8 @@ dracut \
     --add "base rootfs-block" \
     --filesystems "squashfs overlay ext4 vfat" \
     --no-hostonly \
-    --sysroot "${ROOTFS_DIR}" \
-    "${ROOTFS_DIR}/boot/initramfs" \
-    "${KVER}"
+    --kmoddir "${ROOTFS_DIR}/lib/modules/${KVER}" \
+    "${ROOTFS_DIR}/boot/initramfs"
 
 [[ -f "${ROOTFS_DIR}/boot/initramfs" ]] \
     || die "initramfs not found"
