@@ -33,12 +33,12 @@ set default=0
 set timeout=5
 
 menuentry "${DISTRO_NAME} ${DISTRO_VERSION}" {
-    linux  /boot/vmlinuz quiet splash root=live:/dev/disk/by-label/${ISO_LABEL} live-media-path=/live
+    linux  /boot/vmlinuz quiet splash root=live:/dev/sr0 live-media-path=/live rd.live.image
     initrd /boot/initramfs
 }
 
 menuentry "${DISTRO_NAME} ${DISTRO_VERSION} (safe mode)" {
-    linux  /boot/vmlinuz nomodeset root=live:/dev/disk/by-label/${ISO_LABEL} live-media-path=/live
+    linux  /boot/vmlinuz nomodeset root=live:/dev/sr0 live-media-path=/live rd.live.image
     initrd /boot/initramfs
 }
 EOF
@@ -47,8 +47,7 @@ section "Generating ISO image"
 
 grub-mkrescue \
     --output="${ISO_FILENAME}" \
-    "${ISO_STAGING_DIR}" \
-    -- -V "${ISO_LABEL}"
+    "${ISO_STAGING_DIR}"
 
 if [[ ! -f "${ISO_FILENAME}" ]]; then
     die "ISO not found after grub-mkrescue: ${ISO_FILENAME}"
