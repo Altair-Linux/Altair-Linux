@@ -40,7 +40,8 @@ make kvm_guest.config 2>/dev/null || true
 cat >> .config << EOF
 CONFIG_SQUASHFS=m
 CONFIG_SQUASHFS_XZ=m
-CONFIG_OVERLAY_FS=y
+CONFIG_OVERLAY_FS=m
+CONFIG_EXT4_FS=m
 CONFIG_TMPFS=y
 CONFIG_DEVTMPFS=y
 CONFIG_DEVTMPFS_MOUNT=y
@@ -70,6 +71,10 @@ cp arch/x86/boot/bzImage "${ROOTFS_DIR}/boot/vmlinuz-lts"
 KVER="$(make -s kernelrelease)"
 echo "Kernel version: ${KVER}"
 
+section "Installing kernel modules to host for dracut"
+
+make modules_install
+
 section "Building initramfs"
 
 require_cmd dracut
@@ -78,9 +83,8 @@ dracut \
     --force \
     --kver "${KVER}" \
     --add "base rootfs-block" \
-    --filesystems "overlay ext4 vfat" \
+    --filesystems "squashfs overlay ext4 vfat" \
     --no-hostonly \
-    --kmoddir "${ROOTFS_DIR}/lib/modules/${KVER}" \
     "${ROOTFS_DIR}/boot/initramfs"
 
 [[ -f "${ROOTFS_DIR}/boot/initramfs" ]] \
