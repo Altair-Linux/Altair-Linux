@@ -4,42 +4,92 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../config.sh"
 
-section "Building root filesystem"
+require_cmd make
 
-ensure_dir "${ROOTFS_DIR}"
+KERNEL_MAJOR="${KERNEL_VERSION%%.*}"
+KERNEL_FULL="${KERNEL_VERSION}"
+KERNEL_SRC_URL="https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_MAJOR}.x/linux-${KERNEL_FULL}.tar.xz"
+KERNEL_BUILD_DIR="${REPO_ROOT}/.kernel-build"
+KERNEL_SRC_DIR="${KERNEL_BUILD_DIR}/linux-${KERNEL_FULL}"
 
-for d in bin sbin lib lib64 usr/bin usr/sbin usr/lib \
-          etc var/log var/run tmp home root \
-          proc sys dev run boot; do
-    ensure_dir "${ROOTFS_DIR}/${d}"
-done
+ensure_dir "${KERNEL_BUILD_DIR}"
 
-chmod 1777 "${ROOTFS_DIR}/tmp"
-chmod 0750 "${ROOTFS_DIR}/root"
+section "Downloading kernel source ${KERNEL_FULL}"
 
-for link in bin sbin lib lib64; do
-    if [[ ! -e "${ROOTFS_DIR}/usr/${link}" ]]; then
-        ln -s "../${link}" "${ROOTFS_DIR}/usr/${link}"
-    fi
-done
+TARBALL="${KERNEL_BUILD_DIR}/linux-${KERNEL_FULL}.tar.xz"
+if [[ ! -f "${TARBALL}" ]]; then
+    curl -fL "${KERNEL_SRC_URL}" -o "${TARBALL}"
+fi
 
-cat > "${ROOTFS_DIR}/etc/os-release" << EOF
-NAME="${DISTRO_NAME}"
-VERSION="${DISTRO_VERSION}"
-ID=altair
-VERSION_CODENAME=${DISTRO_CODENAME}
-PRETTY_NAME="${DISTRO_NAME} ${DISTRO_VERSION} (${DISTRO_CODENAME})"
-HOME_URL="https://github.com/${GH_REPO}"
+TARBALL_SIZE=$(stat -c%s "${TARBALL}" 2>/dev/null || echo 0)
+[[ "${TARBALL_SIZE}" -lt 10000000 ]] && die "Tarball too small — download likely failed"
+
+section "Extracting kernel source"
+
+if [[ ! -d "${KERNEL_SRC_DIR}" ]]; then
+    tar -xf "${TARBALL}" -C "${KERNEL_BUILD_DIR}"
+fi
+
+section "Configuring kernel"
+
+cd "${KERNEL_SRC_DIR}"
+
+make defconfig
+make kvm_guest.config 2>/dev/null || true
+
+cat >> .config << EOF
+CONFIG_SQUASHFS=m
+CONFIG_SQUASHFS_XZ=m
+CONFIG_OVERLAY_FS=m
+CONFIG_TMPFS=y
+CONFIG_DEVTMPFS=y
+CONFIG_DEVTMPFS_MOUNT=y
+# CONFIG_EFI_STUB is not set
+CONFIG_FB=y
+CONFIG_DRM=y
+CONFIG_DRM_VIRTIO_GPU=y
+CONFIG_VIRTIO=y
+CONFIG_VIRTIO_PCI=y
+CONFIG_VIRTIO_NET=y
+CONFIG_VIRTIO_BLK=y
 EOF
 
-cat > "${ROOTFS_DIR}/etc/hostname" << EOF
-altair
-EOF
+make olddefconfig
 
-cat > "${ROOTFS_DIR}/etc/hosts" << EOF
-127.0.0.1   localhost
-127.0.1.1   altair
-::1         localhost ip6-localhost ip6-loopback
-EOF
+section "Building kernel (this takes a while)"
 
-section "Rootfs staging complete: ${ROOTFS_DIR}"
+make -j"${MAKE_JOBS}" bzImage modules HOSTCFLAGS="-std=gnu11" CFLAGS_KERNEL="-std=gnu11"
+
+section "Installing kernel and modules into rootfs"
+
+make INSTALL_MOD_PATH="${ROOTFS_DIR}" modules_install
+
+mkdir -p "${ROOTFS_DIR}/boot"
+cp arch/x86/boot/bzImage "${ROOTFS_DIR}/boot/vmlinuz-lts"
+
+KVER="$(make -s kernelrelease)"
+echo "Kernel version: ${KVER}"
+
+section "Installing kernel modules to host for dracut"
+
+make modules_install
+
+section "Building initramfs"
+
+require_cmd dracut
+
+dracut \
+    --force \
+    --kver "${KVER}" \
+    --add "base rootfs-block" \
+    --filesystems "squashfs overlay ext4 vfat" \
+    --no-hostonly \
+    "${ROOTFS_DIR}/boot/initramfs"
+
+[[ -f "${ROOTFS_DIR}/boot/initramfs" ]] \
+    || die "initramfs not found"
+
+[[ -f "${ROOTFS_DIR}/boot/vmlinuz-lts" ]] \
+    || die "kernel image not found"
+
+section "Kernel and initramfs ready — ${KVER}"
