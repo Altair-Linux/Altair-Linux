@@ -6,8 +6,8 @@ source "${SCRIPT_DIR}/../config.sh"
 
 require_cmd make
 
-KERNEL_MAJOR="6"
-KERNEL_FULL="6.9.12"
+KERNEL_MAJOR="${KERNEL_VERSION%%.*}"
+KERNEL_FULL="${KERNEL_VERSION}"
 KERNEL_SRC_URL="https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_MAJOR}.x/linux-${KERNEL_FULL}.tar.xz"
 KERNEL_BUILD_DIR="${REPO_ROOT}/.kernel-build"
 KERNEL_SRC_DIR="${KERNEL_BUILD_DIR}/linux-${KERNEL_FULL}"
@@ -37,9 +37,6 @@ cd "${KERNEL_SRC_DIR}"
 make defconfig
 make kvm_guest.config 2>/dev/null || true
 
-# Append our config overrides.
-# Disable EFI_STUB — it uses libstub which fails with GCC 15 C23 defaults.
-# We boot via GRUB so EFI stub is not needed.
 cat >> .config << EOF
 CONFIG_SQUASHFS=y
 CONFIG_SQUASHFS_XZ=y
@@ -61,7 +58,6 @@ make olddefconfig
 
 section "Building kernel (this takes a while)"
 
-# Force C11/GNU11 standard to avoid GCC 15 C23 compat issues with Linux 6.9
 make -j"${MAKE_JOBS}" bzImage modules HOSTCFLAGS="-std=gnu11" CFLAGS_KERNEL="-std=gnu11"
 
 section "Installing kernel and modules into rootfs"
@@ -84,7 +80,7 @@ dracut \
     --add "base rootfs-block" \
     --filesystems "squashfs overlay ext4 vfat" \
     --no-hostonly \
-    --rootdir "${ROOTFS_DIR}" \
+    --sysroot "${ROOTFS_DIR}" \
     "${ROOTFS_DIR}/boot/initramfs" \
     "${KVER}"
 
