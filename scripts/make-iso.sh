@@ -21,11 +21,9 @@ mksquashfs "${ROOTFS_DIR}" "${ISO_STAGING_DIR}/live/filesystem.squashfs" \
     -Xbcj x86 \
     -b 1048576 \
     -noappend \
-    -e "${ROOTFS_DIR}/proc/*" \
-    -e "${ROOTFS_DIR}/sys/*" \
-    -e "${ROOTFS_DIR}/dev/*"
-
-KVER="$(ls "${ROOTFS_DIR}/lib/modules/" | sort -V | tail -n1)"
+    -e "${ROOTFS_DIR}/proc" \
+    -e "${ROOTFS_DIR}/sys" \
+    -e "${ROOTFS_DIR}/dev"
 
 cp "${ROOTFS_DIR}/boot/vmlinuz-lts"  "${ISO_STAGING_DIR}/boot/vmlinuz"
 cp "${ROOTFS_DIR}/boot/initramfs"    "${ISO_STAGING_DIR}/boot/initramfs"
@@ -49,8 +47,8 @@ section "Generating ISO image"
 
 grub-mkrescue \
     --output="${ISO_FILENAME}" \
-    --volid="${ISO_LABEL}" \
-    "${ISO_STAGING_DIR}"
+    "${ISO_STAGING_DIR}" \
+    -- -V "${ISO_LABEL}"
 
 if [[ ! -f "${ISO_FILENAME}" ]]; then
     die "ISO not found after grub-mkrescue: ${ISO_FILENAME}"
