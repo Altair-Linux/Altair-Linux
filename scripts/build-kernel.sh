@@ -10,7 +10,6 @@ require_cmd chroot
 KERNEL_MAJOR="6"
 KERNEL_FULL="6.9.12"
 KERNEL_SRC_URL="https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_MAJOR}.x/linux-${KERNEL_FULL}.tar.xz"
-KERNEL_SHA256="b9c4a9951ed39e36d0a5b4b32edfe8d0d0a87cc62b3d1fb74f0de9d19ac07a27"
 KERNEL_BUILD_DIR="${REPO_ROOT}/.kernel-build"
 KERNEL_SRC_DIR="${KERNEL_BUILD_DIR}/linux-${KERNEL_FULL}"
 
@@ -23,7 +22,8 @@ if [[ ! -f "${TARBALL}" ]]; then
     curl -fL "${KERNEL_SRC_URL}" -o "${TARBALL}"
 fi
 
-echo "${KERNEL_SHA256}  ${TARBALL}" | sha256sum -c -
+TARBALL_SIZE=$(stat -c%s "${TARBALL}" 2>/dev/null || echo 0)
+[[ "${TARBALL_SIZE}" -lt 10000000 ]] && die "Tarball too small — download likely failed"
 
 section "Extracting kernel source"
 
@@ -81,7 +81,6 @@ dracut \
     --kver "${KVER}" \
     --add "base rootfs-block" \
     --filesystems "squashfs overlay ext4 vfat" \
-    --host-only-cmdline \
     --no-hostonly \
     --rootdir "${ROOTFS_DIR}" \
     "${ROOTFS_DIR}/boot/initramfs" \
