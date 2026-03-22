@@ -26,6 +26,10 @@ sysfs   /sys     sysfs  defaults               0 0
 devpts  /dev/pts devpts defaults               0 0
 EOF
 
+mkdir -p "${ROOTFS_DIR}/proc"
+mkdir -p "${ROOTFS_DIR}/sys"
+mkdir -p "${ROOTFS_DIR}/dev"
+
 mount --bind /proc "${ROOTFS_DIR}/proc"
 mount --bind /sys  "${ROOTFS_DIR}/sys"
 mount --bind /dev  "${ROOTFS_DIR}/dev"
