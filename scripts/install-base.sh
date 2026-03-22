@@ -137,7 +137,7 @@ PYEOF
 
 section "Starting local repo server"
 
-"${ASTRA}" serve-repo "${REPO_DIR}" --bind 127.0.0.1:18080 &
+python3 -m http.server 18080 --directory "${REPO_DIR}" &
 REPO_PID=$!
 trap "kill ${REPO_PID} 2>/dev/null || true" EXIT
 sleep 2
