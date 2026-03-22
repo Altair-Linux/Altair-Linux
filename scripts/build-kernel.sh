@@ -38,8 +38,8 @@ make defconfig
 make kvm_guest.config 2>/dev/null || true
 
 cat >> .config << EOF
-CONFIG_SQUASHFS=y
-CONFIG_SQUASHFS_XZ=y
+CONFIG_SQUASHFS=m
+CONFIG_SQUASHFS_XZ=m
 CONFIG_OVERLAY_FS=y
 CONFIG_TMPFS=y
 CONFIG_DEVTMPFS=y
@@ -78,7 +78,7 @@ dracut \
     --force \
     --kver "${KVER}" \
     --add "base rootfs-block" \
-    --filesystems "squashfs overlay ext4 vfat" \
+    --filesystems "overlay ext4 vfat" \
     --no-hostonly \
     --kmoddir "${ROOTFS_DIR}/lib/modules/${KVER}" \
     "${ROOTFS_DIR}/boot/initramfs"
