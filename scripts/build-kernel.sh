@@ -5,7 +5,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../config.sh"
 
 require_cmd make
-require_cmd chroot
 
 KERNEL_MAJOR="6"
 KERNEL_FULL="6.9.12"
@@ -38,6 +37,9 @@ cd "${KERNEL_SRC_DIR}"
 make defconfig
 make kvm_guest.config 2>/dev/null || true
 
+# Append our config overrides.
+# Disable EFI_STUB — it uses libstub which fails with GCC 15 C23 defaults.
+# We boot via GRUB so EFI stub is not needed.
 cat >> .config << EOF
 CONFIG_SQUASHFS=y
 CONFIG_SQUASHFS_XZ=y
@@ -45,8 +47,7 @@ CONFIG_OVERLAY_FS=y
 CONFIG_TMPFS=y
 CONFIG_DEVTMPFS=y
 CONFIG_DEVTMPFS_MOUNT=y
-CONFIG_EFI=y
-CONFIG_EFI_STUB=y
+# CONFIG_EFI_STUB is not set
 CONFIG_FB=y
 CONFIG_DRM=y
 CONFIG_DRM_VIRTIO_GPU=y
@@ -60,7 +61,8 @@ make olddefconfig
 
 section "Building kernel (this takes a while)"
 
-make -j"${MAKE_JOBS}" bzImage modules
+# Force C11/GNU11 standard to avoid GCC 15 C23 compat issues with Linux 6.9
+make -j"${MAKE_JOBS}" bzImage modules HOSTCFLAGS="-std=gnu11" CFLAGS_KERNEL="-std=gnu11"
 
 section "Installing kernel and modules into rootfs"
 
