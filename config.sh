@@ -25,8 +25,6 @@ ASTRA_ROOT_DIR="${REPO_ROOT}/.astra-root"
 PACKAGES_DIR="${REPO_ROOT}/.packages-src"
 PACKAGES_OUT_DIR="${REPO_ROOT}/.packages-out"
 
-ALTAIR_REPO_URL="https://dl-cdn.alpinelinux.org/alpine/edge"
-
 KERNEL_VERSION="${KERNEL_VERSION:-6.9.12}"
 
 ISO_LABEL="ALTAIR_${DISTRO_VERSION}"
