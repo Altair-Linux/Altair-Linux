@@ -30,9 +30,12 @@ bash "${SCRIPTS_DIR}/patch-recipes.sh"
 
 section "Initialising Astra"
 
+REPO_DIR="${REPO_ROOT}/.astra-repo"
 ensure_dir "${ASTRA_DATA_DIR}"
 ensure_dir "${ASTRA_ROOT_DIR}"
 ensure_dir "${PACKAGES_OUT_DIR}"
+ensure_dir "${REPO_DIR}/packages"
+ensure_dir "${REPO_DIR}/signatures"
 
 "${ASTRA}" init \
     --data-dir "${ASTRA_DATA_DIR}" \
@@ -58,21 +61,83 @@ for pkg in "${BOOTSTRAP_PACKAGES[@]}"; do
         || { echo "ERROR: astra build failed for ${pkg}"; exit 1; }
 done
 
-echo "All built packages:"
-ls -1 "${PACKAGES_OUT_DIR}/"
+section "Staging packages into repo layout"
+
+cp "${PACKAGES_OUT_DIR}"/*.astpkg "${REPO_DIR}/packages/"
+
+section "Generating index.json"
+
+python3 - "${REPO_DIR}" "${ASTRA_DATA_DIR}" << 'PYEOF'
+import json, os, sys, hashlib, subprocess, datetime, tarfile, io
+
+repo_dir   = sys.argv[1]
+pkgs_dir   = os.path.join(repo_dir, "packages")
+index_path = os.path.join(repo_dir, "index.json")
+
+entries = []
+for fname in sorted(os.listdir(pkgs_dir)):
+    if not fname.endswith(".astpkg"):
+        continue
+    fpath = os.path.join(pkgs_dir, fname)
+    size  = os.path.getsize(fpath)
+
+    with open(fpath, "rb") as f:
+        raw = f.read()
+    checksum = hashlib.sha256(raw).hexdigest()
+
+    # Extract metadata.json from the zstd-compressed tar
+    meta = {}
+    try:
+        import zstandard as zstd
+        dctx  = zstd.ZstdDecompressor()
+        data  = dctx.decompress(raw, max_output_size=50*1024*1024)
+        with tarfile.open(fileobj=io.BytesIO(data)) as tf:
+            m = tf.extractfile("metadata.json")
+            if m:
+                meta = json.load(m)
+    except Exception:
+        # fallback: parse name/version/arch from filename
+        parts = fname.replace(".astpkg","").rsplit("-", 2)
+        meta  = {"name": parts[0], "version": parts[1] if len(parts)>1 else "0.0.0",
+                 "architecture": parts[2] if len(parts)>2 else "x86_64",
+                 "description": "", "dependencies": [], "conflicts": [],
+                 "provides": [], "license": "", "maintainer": ""}
+
+    entries.append({
+        "name":         meta.get("name", fname),
+        "version":      meta.get("version", "0.0.0"),
+        "architecture": meta.get("architecture", "x86_64"),
+        "description":  meta.get("description", ""),
+        "dependencies": meta.get("dependencies", []),
+        "conflicts":    meta.get("conflicts", []),
+        "provides":     meta.get("provides", []),
+        "checksum":     checksum,
+        "filename":     fname,
+        "size":         size,
+        "license":      meta.get("license", ""),
+        "maintainer":   meta.get("maintainer", ""),
+    })
+
+index = {
+    "name":         "altair",
+    "description":  "Altair Linux local bootstrap repository",
+    "last_updated": datetime.datetime.utcnow().isoformat() + "Z",
+    "packages":     entries,
+}
+with open(index_path, "w") as f:
+    json.dump(index, f, indent=2)
+print(f"index.json written with {len(entries)} packages")
+PYEOF
 
 section "Starting local repo server"
 
-"${ASTRA}" serve-repo "${PACKAGES_OUT_DIR}" \
-    --bind 127.0.0.1:18080 \
-    --data-dir "${ASTRA_DATA_DIR}" \
-    --root     "${ASTRA_ROOT_DIR}" &
+"${ASTRA}" serve-repo "${REPO_DIR}" \
+    --bind 127.0.0.1:18080 &
 REPO_PID=$!
 trap "kill ${REPO_PID} 2>/dev/null || true" EXIT
-
 sleep 2
 
-section "Registering local repo and updating index"
+section "Registering repo and installing packages"
 
 "${ASTRA}" repo add altair http://127.0.0.1:18080/ \
     --data-dir "${ASTRA_DATA_DIR}" \
@@ -81,8 +146,6 @@ section "Registering local repo and updating index"
 "${ASTRA}" update \
     --data-dir "${ASTRA_DATA_DIR}" \
     --root     "${ASTRA_ROOT_DIR}"
-
-section "Installing bootstrap packages into rootfs"
 
 INSTALL_PACKAGES=()
 for pkg in "${BOOTSTRAP_PACKAGES[@]}"; do
