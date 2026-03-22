@@ -6,18 +6,30 @@ source "${SCRIPT_DIR}/../config.sh"
 
 section "Installing kernel"
 
-require_cmd apk
 require_cmd chroot
 
-apk add \
-    --root "${ROOTFS_DIR}" \
-    --no-cache \
-    --repository "${ALTAIR_REPO_URL}/main" \
-    --repository "${ALTAIR_REPO_URL}/community" \
-    "${KERNEL_PACKAGE}" \
-    "${KERNEL_PACKAGE}-dev" \
+ASTRA="${REPO_ROOT}/.astra-src/target/release/astra"
+
+"${ASTRA}" install \
+    linux-lts \
     linux-firmware-none \
-    mkinitfs
+    mkinitfs \
+    --data-dir "${ASTRA_DATA_DIR}" \
+    --root     "${ROOTFS_DIR}" \
+    2>/dev/null || true
+
+if [[ ! -d "${ROOTFS_DIR}/lib/modules" ]] || \
+   [[ -z "$(ls "${ROOTFS_DIR}/lib/modules/" 2>/dev/null)" ]]; then
+    section "Kernel not in Altair repo — installing from Alpine apk into rootfs"
+    apk add \
+        --root "${ROOTFS_DIR}" \
+        --initdb \
+        --no-cache \
+        --repository https://dl-cdn.alpinelinux.org/alpine/v3.19/main \
+        linux-lts \
+        linux-firmware-none \
+        mkinitfs
+fi
 
 section "Generating initramfs"
 
@@ -33,15 +45,14 @@ cleanup() {
 trap cleanup EXIT
 
 KVER="$(ls "${ROOTFS_DIR}/lib/modules/" | sort -V | tail -n1)"
+echo "Kernel version: ${KVER}"
 
 chroot "${ROOTFS_DIR}" mkinitfs -o /boot/initramfs "${KVER}"
 
-if [[ ! -f "${ROOTFS_DIR}/boot/initramfs" ]]; then
-    die "initramfs not found after mkinitfs"
-fi
+[[ -f "${ROOTFS_DIR}/boot/initramfs" ]] \
+    || die "initramfs not found after mkinitfs"
 
-if [[ ! -f "${ROOTFS_DIR}/boot/vmlinuz-lts" ]]; then
-    die "kernel image not found at /boot/vmlinuz-lts"
-fi
+[[ -f "${ROOTFS_DIR}/boot/vmlinuz-lts" ]] \
+    || die "kernel image not found at /boot/vmlinuz-lts"
 
 section "Kernel and initramfs ready"
