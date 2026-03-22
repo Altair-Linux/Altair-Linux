@@ -36,24 +36,24 @@ cd "${KERNEL_SRC_DIR}"
 
 make defconfig
 make kvm_guest.config 2>/dev/null || true
+make olddefconfig
 
-cat >> .config << EOF
-CONFIG_SQUASHFS=m
-CONFIG_SQUASHFS_XZ=m
-CONFIG_OVERLAY_FS=m
-CONFIG_EXT4_FS=m
-CONFIG_TMPFS=y
-CONFIG_DEVTMPFS=y
-CONFIG_DEVTMPFS_MOUNT=y
-# CONFIG_EFI_STUB is not set
-CONFIG_FB=y
-CONFIG_DRM=y
-CONFIG_DRM_VIRTIO_GPU=y
-CONFIG_VIRTIO=y
-CONFIG_VIRTIO_PCI=y
-CONFIG_VIRTIO_NET=y
-CONFIG_VIRTIO_BLK=y
-EOF
+./scripts/config --module CONFIG_SQUASHFS
+./scripts/config --enable  CONFIG_SQUASHFS_XZ
+./scripts/config --module CONFIG_OVERLAY_FS
+./scripts/config --module CONFIG_EXT4_FS
+./scripts/config --module CONFIG_VFAT_FS
+./scripts/config --enable  CONFIG_FAT_FS
+./scripts/config --enable  CONFIG_TMPFS
+./scripts/config --enable  CONFIG_DEVTMPFS
+./scripts/config --enable  CONFIG_DEVTMPFS_MOUNT
+./scripts/config --enable  CONFIG_FB
+./scripts/config --enable  CONFIG_DRM
+./scripts/config --enable  CONFIG_DRM_VIRTIO_GPU
+./scripts/config --enable  CONFIG_VIRTIO
+./scripts/config --enable  CONFIG_VIRTIO_PCI
+./scripts/config --enable  CONFIG_VIRTIO_NET
+./scripts/config --enable  CONFIG_VIRTIO_BLK
 
 make olddefconfig
 
@@ -73,6 +73,7 @@ echo "Kernel version: ${KVER}"
 
 section "Installing kernel modules to host for dracut"
 
+mkdir -p /lib/modules
 make modules_install
 
 section "Building initramfs"
