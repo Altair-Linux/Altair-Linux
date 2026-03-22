@@ -4,32 +4,25 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../config.sh"
 
-section "Installing kernel"
+section "Installing kernel and initramfs tools"
 
 require_cmd chroot
 
-ASTRA="${REPO_ROOT}/.astra-src/target/release/astra"
+mkdir -p "${ROOTFS_DIR}/etc/apk/keys"
+cp /etc/apk/keys/* "${ROOTFS_DIR}/etc/apk/keys/"
 
-"${ASTRA}" install \
+cat > "${ROOTFS_DIR}/etc/apk/repositories" << EOF
+https://dl-cdn.alpinelinux.org/alpine/edge/main
+https://dl-cdn.alpinelinux.org/alpine/edge/community
+EOF
+
+apk add \
+    --root "${ROOTFS_DIR}" \
+    --no-cache \
+    --no-network=false \
     linux-lts \
     linux-firmware-none \
-    mkinitfs \
-    --data-dir "${ASTRA_DATA_DIR}" \
-    --root     "${ROOTFS_DIR}" \
-    2>/dev/null || true
-
-if [[ ! -d "${ROOTFS_DIR}/lib/modules" ]] || \
-   [[ -z "$(ls "${ROOTFS_DIR}/lib/modules/" 2>/dev/null)" ]]; then
-    section "Kernel not in Altair repo — installing from Alpine apk into rootfs"
-    apk add \
-        --root "${ROOTFS_DIR}" \
-        --initdb \
-        --no-cache \
-        --repository https://dl-cdn.alpinelinux.org/alpine/v3.19/main \
-        linux-lts \
-        linux-firmware-none \
-        mkinitfs
-fi
+    mkinitfs
 
 section "Generating initramfs"
 
