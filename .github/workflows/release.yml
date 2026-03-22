@@ -27,7 +27,7 @@ jobs:
           apk add --no-cache \
             bash git squashfs-tools xorriso grub grub-bios \
             mtools dosfstools curl wget github-cli unzip \
-            rust cargo perl \
+            rust cargo perl python3 py3-zstandard \
             build-base make cmake autoconf automake libtool \
             pkgconf musl-dev openssl-dev openssl-libs-static \
             linux-headers bison flex texinfo \
