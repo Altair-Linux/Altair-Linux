@@ -67,10 +67,22 @@ Description=Altair Linux Splash Screen
 Version=1.0
 EOF
 
-cat >> "${ROOTFS_DIR}/etc/sddm.conf.d/altair.conf" << EOF
+mkdir -p "${ROOTFS_DIR}/etc/sddm.conf.d"
+
+cat > "${ROOTFS_DIR}/etc/sddm.conf.d/altair.conf" << EOF
+[Autologin]
+Relogin=false
+
+[General]
+HaltCommand=/sbin/poweroff
+RebootCommand=/sbin/reboot
 
 [Theme]
 Current=altair
+
+[Users]
+MaximumUid=60000
+MinimumUid=1000
 EOF
 
 section "Branding applied"
